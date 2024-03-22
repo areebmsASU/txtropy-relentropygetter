@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import Value, CharField, F
 from django.db.models.functions import Replace, Cast, Length
 from scipy.stats import entropy
+from scipy.spatial.distance import jensenshannon
 
 from gutenberg.models import Book, Chunk, Entropy
 
@@ -18,7 +19,7 @@ class EntropyGetter:
         chunk = Chunk.objects.get(id=chunk_id)
 
         related_chunk_qs = (
-            Chunk.objects.exclude(vocab_counts=None)
+            Chunk.objects.exclude(id=chunk.id)
             .filter(book__gutenberg_id=other_gutenberg_id)
             .filter(vocab_counts__has_any_keys=list(chunk.vocab_counts))
             .annotate(vocab_counts_str=Cast("vocab_counts", output_field=CharField()))
@@ -44,7 +45,6 @@ class EntropyGetter:
                 if vocab in related_chunk.vocab_counts.keys()
             ]
             if len(shared_vocab) > 1:
-
                 combined_vocab = sorted(
                     set(
                         list(chunk.vocab_counts.keys())
@@ -52,32 +52,73 @@ class EntropyGetter:
                     )
                 )
 
-                chunk_counts = [chunk.vocab_counts[vocab] for vocab in shared_vocab]
-                related_chunk_counts = [
+                combined_vocab_count = sum(
+                    list(chunk.vocab_counts.values())
+                    + list(related_chunk.vocab_counts.values())
+                )
+
+                chunk_counts_shared = [
+                    chunk.vocab_counts[vocab] for vocab in shared_vocab
+                ]
+                related_chunk_counts_shared = [
                     related_chunk.vocab_counts[vocab] for vocab in shared_vocab
                 ]
 
-                rel_entr = entropy(related_chunk_counts, chunk_counts)
-                rel_entr_normed = entropy(
-                    chunk_counts, chunk_counts, len(combined_vocab)
+                jensen_shannon = jensenshannon(
+                    [chunk.vocab_counts.get(vocab, 0) for vocab in combined_vocab],
+                    [
+                        related_chunk.vocab_counts.get(vocab, 0)
+                        for vocab in combined_vocab
+                    ],
+                )
+
+                shared_vocab_counts = {
+                    vocab: (
+                        chunk.vocab_counts[vocab] + related_chunk.vocab_counts[vocab]
+                    )
+                    for vocab in shared_vocab
+                }
+
+                shared_vocab_count = sum(shared_vocab_counts.values())
+                shared_vocab_ratio = shared_vocab_count / combined_vocab_count
+
+                entr_gained = entropy(
+                    chunk_counts_shared,
+                    related_chunk_counts_shared,
+                    len(combined_vocab),
+                )
+                entr_lost = entropy(
+                    related_chunk_counts_shared,
+                    chunk_counts_shared,
+                    len(combined_vocab),
                 )
 
                 entropy_objs.append(
                     Entropy(
                         chunk=chunk,
                         related_chunk=related_chunk,
-                        shared_vocab_count=len(shared_vocab),
-                        combined_vocab_count=len(combined_vocab),
-                        rel_entr=rel_entr,
-                        rel_entr_normed=rel_entr_normed,
-                        shared_count_x_rel_entr=len(shared_vocab) * rel_entr,
-                        shared_count_x_rel_entr_normed=len(shared_vocab) * rel_entr,
-                        combined_count_x_rel_entr=len(combined_vocab) * rel_entr_normed,
-                        combined_count_x_rel_entr_normed=(
-                            len(combined_vocab) * rel_entr_normed
-                        ),
+                        entr_gained=entr_gained,
+                        entr_lost=entr_lost,
+                        shared_vocab_counts=shared_vocab_counts,
+                        shared_vocab_count=shared_vocab_count,
+                        shared_vocab_ratio=shared_vocab_ratio,
+                        jensen_shannon=jensen_shannon,
                     )
                 )
+
+                entropy_objs.append(
+                    Entropy(
+                        related_chunk=chunk,
+                        chunk=related_chunk,
+                        entr_gained=entr_lost,
+                        entr_lost=entr_gained,
+                        shared_vocab_counts=shared_vocab_counts,
+                        shared_vocab_count=shared_vocab_count,
+                        shared_vocab_ratio=shared_vocab_ratio,
+                        jensen_shannon=jensen_shannon,
+                    )
+                )
+
         Entropy.objects.bulk_create(entropy_objs, batch_size=250)
 
     def get_book_entropy(self, this_gutenberg_id, other_gutenberg_id):
@@ -96,7 +137,7 @@ class EntropyGetter:
     def print_execution_status(self):
         done, not_done = wait(self.executor_futures, return_when="FIRST_COMPLETED")
         while len(not_done):
-            sleep(1)
+            sleep(3)
             done, not_done = wait(self.executor_futures, return_when="FIRST_COMPLETED")
             print(
                 f"{len(not_done)} of {(len(done) + len(not_done))} tasks ({int((100 * len(not_done)) / (len(done) + len(not_done)))}%) remaining."
@@ -109,4 +150,4 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         entropy_getter = EntropyGetter()
-        entropy_getter.get_book_entropy(33310, 3300)
+        entropy_getter.get_book_entropy(3300, 33310)
