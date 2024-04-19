@@ -5,6 +5,8 @@ from django.db import models
 
 class Book(models.Model):
     gutenberg_id = models.IntegerField(unique=True)
+    title = models.TextField()
+    author = models.TextField()
 
 
 class Chunk(models.Model):
