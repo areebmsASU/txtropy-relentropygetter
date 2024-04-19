@@ -18,7 +18,15 @@ def load_chunks(gutenberg_id):
     while data["chunks"]:
         chunks = []
         for chunk in data["chunks"]:
-            chunks.append(Chunk(book_builder_id=chunk["id"], text=chunk["text"], book_id=book.id))
+            chunks.append(
+                Chunk(
+                    book_builder_id=chunk["id"],
+                    text=chunk["text"],
+                    vocab_counts=chunk["vocab_counts"],
+                    last_modified=chunk["last_modified"],
+                    book_id=book.id,
+                )
+            )
             created_ids.append(chunk["id"])
         Chunk.objects.bulk_create(chunks)
         if "next_page" in data:

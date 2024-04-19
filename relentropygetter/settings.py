@@ -21,6 +21,8 @@ ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = ["corsheaders", "gutenberg.apps.GutenbergConfig"]
 
+ROOT_URLCONF = "relentropygetter.urls"
+
 
 DATABASES = {
     "default": {
