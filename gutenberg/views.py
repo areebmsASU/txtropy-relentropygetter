@@ -1,8 +1,10 @@
 import requests
 from celery import shared_task
+from django.db.models import Count, Avg, StdDev
 from django.http import JsonResponse
 
-from gutenberg.models import Book, Chunk
+from gutenberg.models import Book, Chunk, Entropy
+
 
 KEYWORDEXTRACTOR_URL = "http://api.keywordextractor.txtropy.com"
 
@@ -61,3 +63,66 @@ def books(request):
             return JsonResponse({"error": repr(e)}, status=400)
         load_chunks.delay(gutenberg_id=book.gutenberg_id)
         return JsonResponse({"status": status})
+    elif request.method == "GET":
+        return JsonResponse(
+            list(
+                Book.objects.annotate(chunk_count=Count("chunks")).order_by("gutenberg_id").values()
+            ),
+            safe=False,
+        )
+
+
+def get_related(request):
+    relations = []
+    if request.method == "GET":
+        ids = request.GET.get("chunks")
+        if ids:
+            mean, dev = Entropy.objects.aggregate(
+                Avg("jensen_shannon"), StdDev("jensen_shannon")
+            ).values()
+            ids = list(map(int, ids.split(",")))
+            chunk_ids = []
+            for entropy_data in (
+                Entropy.objects.filter(chunk__book_builder_id__in=ids)
+                .order_by("jensen_shannon")
+                .values(
+                    "related_chunk__book__gutenberg_id",
+                    "related_chunk__book__title",
+                    "related_chunk__book__author",
+                    "related_chunk__book_builder_id",
+                    "related_chunk__text",
+                    "shared_vocab_counts",
+                    "entr_gained",
+                    "entr_lost",
+                    "jensen_shannon",
+                )[:5]
+            ):
+                if entropy_data["related_chunk__book_builder_id"] not in chunk_ids:
+                    chunk_ids.append(entropy_data["related_chunk__book_builder_id"])
+                    relations.append(
+                        {
+                            "id": entropy_data["related_chunk__book_builder_id"],
+                            "book": {
+                                "id": entropy_data["related_chunk__book__gutenberg_id"],
+                                "author": entropy_data["related_chunk__book__author"],
+                                "title": entropy_data["related_chunk__book__title"],
+                            },
+                            "text": entropy_data["related_chunk__text"],
+                            "entropy": {
+                                "jensen_shannon": round(
+                                    (entropy_data["jensen_shannon"] - mean) / dev, 4
+                                ),
+                                "gained": entropy_data["entr_gained"],
+                                "lost": entropy_data["entr_lost"],
+                            },
+                            "shared_vocab": [
+                                {"stem": stem, "count": count}
+                                for stem, count in sorted(
+                                    entropy_data["shared_vocab_counts"].items(),
+                                    key=lambda x: x[1],
+                                    reverse=True,
+                                )
+                            ],
+                        }
+                    )
+    return JsonResponse(relations, safe=False)
