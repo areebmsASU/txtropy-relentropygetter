@@ -1,8 +1,11 @@
+from json import loads
+
 import requests
 from celery import shared_task
 from django.db.models import Count, Avg, StdDev
 from django.http import JsonResponse
 
+from gutenberg.entropy_getter import async_bulk_get_similarity
 from gutenberg.models import Book, Chunk, Entropy
 
 
@@ -63,13 +66,30 @@ def books(request):
         return JsonResponse({"status": status})
     elif request.method == "GET":
         ids = []
-        count = {}
+        chunk_count = {}
+        book_count = {}
         updated = {}
-        for book in Book.objects.annotate(chunk_count=Count("chunks")).order_by("gutenberg_id"):
+        for book in (
+            Book.objects.annotate(book_count=Count("entropies", distinct=True))
+            .annotate(chunk_count=Count("chunks"))
+            .order_by("gutenberg_id")
+        ):
             ids.append(book.gutenberg_id)
-            count[book.gutenberg_id] = book.chunk_count
-            updated[book.gutenberg_id] = book.last_modified.date()
-        return JsonResponse({"ids": ids, "count": count, "updated": updated})
+            chunk_count[book.gutenberg_id] = book.chunk_count
+            book_count[book.gutenberg_id] = book.book_count
+            updated[book.gutenberg_id] = book.last_updated.date()
+        return JsonResponse(
+            {"ids": ids, "chunk_count": chunk_count, "book_count": book_count, "updated": updated}
+        )
+
+
+def get_similarity(request):
+    if request.method == "POST":
+        body_data = loads(request.body.decode("utf-8"))
+        task_id = async_bulk_get_similarity.delay(
+            gutenberg_id=body_data["book_id"], other_gutenberg_ids=body_data["book_ids"]
+        ).task_id
+        return JsonResponse({"task": task_id})
 
 
 def get_related(request):

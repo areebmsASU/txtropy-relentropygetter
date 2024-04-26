@@ -171,11 +171,12 @@ class EntropyGetter:
 
 
 @shared_task
-def get_similarity(gutenberg_id, other_gutenberg_id):
+def async_get_similarity(gutenberg_id, other_gutenberg_id):
     EntropyGetter(gutenberg_id, other_gutenberg_id).get()
 
 
 @shared_task
-def bulk_get_similarity(gutenberg_id, other_gutenberg_ids):
+def async_bulk_get_similarity(gutenberg_id, other_gutenberg_ids):
     for other_gutenberg_id in other_gutenberg_ids:
-        EntropyGetter(gutenberg_id, other_gutenberg_id).get()
+        if gutenberg_id != other_gutenberg_id:
+            EntropyGetter(gutenberg_id, other_gutenberg_id).get()
