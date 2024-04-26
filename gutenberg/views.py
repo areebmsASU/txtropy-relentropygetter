@@ -71,7 +71,7 @@ def books(request):
         updated = {}
         for book in (
             Book.objects.annotate(book_count=Count("entropies", distinct=True))
-            .annotate(chunk_count=Count("chunks"))
+            .annotate(chunk_count=Count("chunks", distinct=True))
             .order_by("gutenberg_id")
         ):
             ids.append(book.gutenberg_id)

@@ -24,10 +24,10 @@ class EntropyGetter:
             executor_futures.append(executor.submit(self.get_chunk_entropy, chunk_id))
         done, not_done = wait(executor_futures, return_when="FIRST_COMPLETED")
         while len(not_done):
-            sleep(3)
+            sleep(5)
             done, not_done = wait(executor_futures, return_when="FIRST_COMPLETED")
             print(
-                f"{len(not_done)} of {(len(done) + len(not_done))} tasks ({int((100 * len(not_done)) / (len(done) + len(not_done)))}%) remaining."
+                f"{self.book.gutenberg_id}x{self.other_book.gutenberg_id}: {len(not_done)} of {(len(done) + len(not_done))} tasks ({int((100 * len(not_done)) / (len(done) + len(not_done)))}%) remaining."
             )
         self.get_book_entropy()
 
@@ -177,6 +177,12 @@ def async_get_similarity(gutenberg_id, other_gutenberg_id):
 
 @shared_task
 def async_bulk_get_similarity(gutenberg_id, other_gutenberg_ids):
+
     for other_gutenberg_id in other_gutenberg_ids:
-        if gutenberg_id != other_gutenberg_id:
+        if (
+            gutenberg_id != other_gutenberg_id
+            and not BookEntropy.objects.filter(
+                book__gutenberg_id=gutenberg_id, related_book__gutenberg_id=other_gutenberg_id
+            ).exists()
+        ):
             EntropyGetter(gutenberg_id, other_gutenberg_id).get()

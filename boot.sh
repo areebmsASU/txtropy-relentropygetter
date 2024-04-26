@@ -42,6 +42,7 @@ cat > /opt/bitnami/apache/conf/vhosts/relentropygetter-http-vhost.conf <<- "EOF"
 </IfDefine>
 <VirtualHost 127.0.0.1:80 _default_:80>
 ServerAlias *
+WSGIApplicationGroup %{GLOBAL}
 WSGIProcessGroup relentropygetter
 WSGIScriptAlias / /home/bitnami/relentropygetter/relentropygetter/wsgi.py
 <Directory /home/bitnami/relentropygetter/relentropygetter>
@@ -63,6 +64,7 @@ ServerAlias *
 SSLEngine on
 SSLCertificateFile "/opt/bitnami/apache/conf/bitnami/certs/server.crt"
 SSLCertificateKeyFile "/opt/bitnami/apache/conf/bitnami/certs/server.key"
+WSGIApplicationGroup %{GLOBAL}
 WSGIProcessGroup relentropygetter
 WSGIScriptAlias / /home/bitnami/relentropygetter/relentropygetter/wsgi.py
 <Directory /home/bitnami/relentropygetter/relentropygetter>
