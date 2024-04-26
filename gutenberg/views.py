@@ -25,7 +25,7 @@ def load_chunks(gutenberg_id):
                     book_builder_id=chunk["id"],
                     text=chunk["text"],
                     vocab_counts=chunk["vocab_counts"],
-                    last_modified=chunk["last_modified"],
+                    last_updated=chunk["last_modified"],
                     book_id=book.id,
                 )
             )
@@ -57,19 +57,19 @@ def books(request):
                 book.author = request.POST["author"]
                 book.save(update_fields=["title", "author"])
                 status = "updated"
-
         except Exception as e:
-
             return JsonResponse({"error": repr(e)}, status=400)
         load_chunks.delay(gutenberg_id=book.gutenberg_id)
         return JsonResponse({"status": status})
     elif request.method == "GET":
-        return JsonResponse(
-            list(
-                Book.objects.annotate(chunk_count=Count("chunks")).order_by("gutenberg_id").values()
-            ),
-            safe=False,
-        )
+        ids = []
+        count = {}
+        updated = {}
+        for book in Book.objects.annotate(chunk_count=Count("chunks")).order_by("gutenberg_id"):
+            ids.append(book.gutenberg_id)
+            count[book.gutenberg_id] = book.chunk_count
+            updated[book.gutenberg_id] = book.last_modified.date()
+        return JsonResponse({"ids": ids, "count": count, "updated": updated})
 
 
 def get_related(request):
